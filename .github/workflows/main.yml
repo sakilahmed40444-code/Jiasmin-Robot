@@ -14,38 +14,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract Android project
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Extract project
         run: |
           unzip -q "lia-native-v1.1 (2).zip" -d project
           find project -name gradlew -type f
 
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager --version
-          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
-          sdkmanager --sdk_root="$ANDROID_HOME" \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Build Debug APK
+      - name: Build APK
         run: |
           GRADLEW=$(find project -name gradlew -type f | head -n 1)
           if [ -z "$GRADLEW" ]; then
-            echo "ERROR: gradlew not found in ZIP"
+            echo "ERROR: Gradle wrapper not found"
             exit 1
           fi
           PROJECT_DIR=$(dirname "$GRADLEW")
