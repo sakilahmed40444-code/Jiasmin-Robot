@@ -14,6 +14,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -29,22 +32,25 @@ jobs:
           unzip -q "lia-native-v1.1 (2).zip" -d project
           find project -name gradlew -type f
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Find Gradle project
-        run: |
-          find project -name gradlew -type f
+          sdkmanager --version
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Build Debug APK
         run: |
-          cd project
-          chmod +x gradlew
+          GRADLEW=$(find project -name gradlew -type f | head -n 1)
+          if [ -z "$GRADLEW" ]; then
+            echo "ERROR: gradlew not found in ZIP"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          chmod +x "$GRADLEW"
+          cd "$PROJECT_DIR"
           ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
