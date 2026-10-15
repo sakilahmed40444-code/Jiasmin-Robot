@@ -12,8 +12,11 @@ jobs:
         run: |
           ZIP=$(ls lia-native-v*.zip 2>/dev/null | sort -V | tail -n 1)
           if [ -z "$ZIP" ]; then
-            echo "ERROR: repo root me lia-native-v*.zip nahi mila."
-            echo "Pehle project zip ko repo ke ROOT me upload karo, phir Re-run karo."
+            ZIP=$(ls "Priya Assistant v"* 2>/dev/null | sort -V | tail -n 1)
+          fi
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: repo root me project zip nahi mila."
+            echo "lia-native-vX.Y.zip ya 'Priya Assistant vX.Y' naam se zip upload karo, phir Re-run karo."
             exit 1
           fi
           echo "Unzipping: $ZIP"
