@@ -16,7 +16,8 @@ jobs:
         run: |
           unzip -q -o myra-v2-phase1.zip
           mv myra-v2-phase1/* .
-          rmdir myra-v2-phase1
+          rm -rf myra-v2-phase1
+          ls -a
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
