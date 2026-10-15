@@ -15,8 +15,10 @@ jobs:
       - name: Unzip project
         run: |
           ls -la
-          test -f myra-v2-phase1.zip || { echo "❌ myra-v2-phase1.zip repo-te nai! Code tab > Add file > Upload files diye zip ta upload kore Commit koro."; exit 1; }
-          unzip -q -o myra-v2-phase1.zip
+          ZIP=$(ls myra-v2-phase1*.zip 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then echo "❌ zip repo-te nai! Code tab > Add file > Upload files diye zip ta upload kore Commit koro."; exit 1; fi
+          echo "📦 Using: $ZIP"
+          unzip -q -o "$ZIP"
           mv myra-v2-phase1/* .
           rm -rf myra-v2-phase1
 
