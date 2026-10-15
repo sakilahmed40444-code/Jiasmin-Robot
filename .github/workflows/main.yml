@@ -1,31 +1,11 @@
-name: Build LIA APK
-on:
-  push:
-  workflow_dispatch:
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
       - name: Unzip project
-        run: unzip -o lia-native-*.zip -d build-src
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-      - name: Set up Android SDK
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
-      - name: Build debug APK
-        run: |
-          cd build-src
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: lia-apk
-          path: build-src/app/build/outputs/apk/debug/app-debug.apk
+          ZIP=$(ls lia-native-v*.zip 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: repo root me lia-native-v*.zip nahi mila."
+            echo "Pehle project zip ko repo ke ROOT me upload karo, phir Re-run karo."
+            exit 1
+          fi
+          echo "Unzipping: $ZIP"
+          rm -rf build-src
+          unzip -o "$ZIP" -d build-src
