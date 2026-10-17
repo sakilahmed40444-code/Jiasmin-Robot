@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build-apk:
     name: Build Android APK
@@ -15,18 +18,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Find project
+        shell: bash
+        run: |
+          echo "Checking repository files..."
+          find . -maxdepth 3 -type f \
+            \( -name "package.json" -o -name "capacitor.config.*" \) \
+            -print
+
+      - name: Detect project directory
+        id: project
+        shell: bash
+        run: |
+          if [ -f "package.json" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          else
+            PKG=$(find . -type f -name "package.json" -not -path "./node_modules/*" | head -n 1)
+
+            if [ -z "$PKG" ]; then
+              echo "ERROR: package.json was not found."
+              echo "Repository files:"
+              find . -maxdepth 4 -type f | head -200
+              exit 1
+            fi
+
+            DIR=$(dirname "$PKG")
+            echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+            echo "Found project in: $DIR"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Install dependencies
+        working-directory: ${{ steps.project.outputs.dir }}
         run: npm install
 
       - name: Build Web App
+        working-directory: ${{ steps.project.outputs.dir }}
         run: npm run build
 
+      - name: Install Capacitor Android
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: |
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
+
       - name: Sync Capacitor Android
+        working-directory: ${{ steps.project.outputs.dir }}
         run: npx cap sync android
 
       - name: Setup Java
@@ -36,14 +78,24 @@ jobs:
           java-version: 17
 
       - name: Make Gradle executable
-        run: chmod +x android/gradlew
+        working-directory: ${{ steps.project.outputs.dir }}/android
+        run: chmod +x gradlew
 
       - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
+        working-directory: ${{ steps.project.outputs.dir }}/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Find APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        shell: bash
+        run: |
+          echo "APK files:"
+          find android/app/build/outputs/apk -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Myraa-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            **/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
