@@ -1,80 +1,102 @@
-name: Build debug APK
+name: Build Myraa APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find project dir
-        run: |
-          FOUND=$(find . -maxdepth 3 -name package.json -not -path '*/node_modules/*' | head -1)
-          if [ -z "$FOUND" ]; then echo "package.json not found"; exit 1; fi
-          DIR=$(dirname "$FOUND")
-          echo "PROJECT_DIR=$DIR" >> $GITHUB_ENV
-          echo "Project dir: $DIR"
-          ls "$DIR"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: Set up JDK 21
+      # Capacitor 7.4.x needs JDK 21 (sourceCompatibility 21 in @capacitor/android)
+      - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Verify Java
+        shell: bash
         run: |
           echo "JAVA_HOME=$JAVA_HOME"
-          java -version
-          javac -version
+          "$JAVA_HOME/bin/java" -version
+          "$JAVA_HOME/bin/javac" -version
 
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+      - name: Extract project ZIP
+        shell: bash
+        run: |
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "Myraa-APK-*.zip" | head -n 1)
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: Myraa-APK-*.zip not found in repo"
+            exit 1
+          fi
+          echo "Extracting $ZIP_FILE ..."
+          rm -rf myraa-project
+          mkdir -p myraa-project
+          unzip -o "$ZIP_FILE" -d myraa-project
+          test -f myraa-project/package.json || { echo "ERROR: package.json not inside ZIP"; exit 1; }
+          echo "PROJECT_DIR=myraa-project" >> "$GITHUB_ENV"
 
-      - name: Install + build web
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npm install --no-audit --no-fund
+
+      - name: Build web app
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npm run build
+
+      - name: Add Android platform (if missing)
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          npm ci || npm install
-          npm run build
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
 
-      - name: Capacitor sync android
+      - name: Pin Gradle to Java 21
+        working-directory: ${{ env.PROJECT_DIR }}
+        shell: bash
+        run: |
+          # A stale org.gradle.java.home (e.g. JDK 17 from a PC) silently
+          # overrides JAVA_HOME and causes "invalid source release: 21".
+          # Delete any existing pin, then pin to this runner's JDK 21.
+          PROP="android/gradle.properties"
+          sed -i '/^org.gradle.java.home=/d' "$PROP"
+          echo "org.gradle.java.home=$JAVA_HOME" >> "$PROP"
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --stop || true
+          ./gradlew -version
+
+      - name: Add microphone permission
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: bash scripts/patch-android-permission.sh
+
+      - name: Sync Capacitor
         working-directory: ${{ env.PROJECT_DIR }}
         run: npx cap sync android
 
-      - name: Make gradlew executable
-        run: chmod +x "${{ env.PROJECT_DIR }}/android/gradlew"
-
-      - name: Remove stale Gradle JVM pin
-        run: |
-          # A committed org.gradle.java.home (e.g. JDK 17 from a PC) silently overrides JAVA_HOME.
-          # Capacitor 7.4.4 needs JDK 21 (sourceCompatibility = VERSION_21).
-          PROP="${{ env.PROJECT_DIR }}/android/gradle.properties"
-          if [ -f "$PROP" ]; then
-            sed -i '/^org.gradle.java.home=/d' "$PROP"
-            echo "stale org.gradle.java.home pin removed (if any)"
-          fi
-          "${{ env.PROJECT_DIR }}/android/gradlew" --stop || true
-
-      - name: Pin Gradle to JDK 21
-        run: |
-          echo "org.gradle.java.home=$JAVA_HOME" >> "${{ env.PROJECT_DIR }}/android/gradle.properties"
-          grep "org.gradle.java.home" "${{ env.PROJECT_DIR }}/android/gradle.properties"
-
-      - name: gradlew version (diagnostic)
-        working-directory: ${{ env.PROJECT_DIR }}/android
-        run: ./gradlew -version
-
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}/android
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: myraa-debug-apk
-          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/*.apk
+          name: Myraa-APK
+          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
