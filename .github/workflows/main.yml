@@ -18,34 +18,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find project
+      - name: Extract Myraa ZIP
         shell: bash
         run: |
-          echo "Checking repository files..."
-          find . -maxdepth 3 -type f \
-            \( -name "package.json" -o -name "capacitor.config.*" \) \
-            -print
+          echo "ZIP files:"
+          find . -maxdepth 2 -type f -name "*.zip" -print
 
-      - name: Detect project directory
+          ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found"
+            exit 1
+          fi
+
+          echo "Extracting: $ZIP_FILE"
+
+          mkdir -p myraa-project
+          unzip -o "$ZIP_FILE" -d myraa-project
+
+          echo "Extracted files:"
+          find myraa-project -maxdepth 4 -type f | head -200
+
+      - name: Find package.json
         id: project
         shell: bash
         run: |
-          if [ -f "package.json" ]; then
-            echo "dir=." >> "$GITHUB_OUTPUT"
-          else
-            PKG=$(find . -type f -name "package.json" -not -path "./node_modules/*" | head -n 1)
+          PKG=$(find myraa-project -type f -name "package.json" | head -n 1)
 
-            if [ -z "$PKG" ]; then
-              echo "ERROR: package.json was not found."
-              echo "Repository files:"
-              find . -maxdepth 4 -type f | head -200
-              exit 1
-            fi
-
-            DIR=$(dirname "$PKG")
-            echo "dir=$DIR" >> "$GITHUB_OUTPUT"
-            echo "Found project in: $DIR"
+          if [ -z "$PKG" ]; then
+            echo "ERROR: package.json not found inside ZIP"
+            find myraa-project -maxdepth 5 -type f
+            exit 1
           fi
+
+          PROJECT_DIR=$(dirname "$PKG")
+
+          echo "package.json found:"
+          echo "$PKG"
+
+          echo "Project directory:"
+          echo "$PROJECT_DIR"
+
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -84,13 +98,6 @@ jobs:
       - name: Build Debug APK
         working-directory: ${{ steps.project.outputs.dir }}/android
         run: ./gradlew assembleDebug --no-daemon
-
-      - name: Find APK
-        working-directory: ${{ steps.project.outputs.dir }}
-        shell: bash
-        run: |
-          echo "APK files:"
-          find android/app/build/outputs/apk -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
