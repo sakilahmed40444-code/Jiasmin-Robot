@@ -18,12 +18,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Java 21 is REQUIRED because the project uses sourceCompatibility 21
-      - name: Setup Java 21
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
           cache: gradle
 
       - name: Setup Node.js
@@ -32,35 +31,37 @@ jobs:
           node-version: '20'
           cache: npm
 
+      - name: Check Java
+        run: |
+          java -version
+          javac -version
+          echo "JAVA_HOME=$JAVA_HOME"
+
       - name: Find Project
         shell: bash
         run: |
-          echo "Searching for package.json..."
-
           if [ -f "package.json" ]; then
-            echo "Project found in root"
             echo "PROJECT_DIR=." >> "$GITHUB_ENV"
           else
-            PROJECT_DIR=$(find . -name package.json -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
+            PROJECT_DIR=$(find . -name package.json \
+              -not -path "*/node_modules/*" \
+              -printf '%h\n' | head -n 1)
 
             if [ -z "$PROJECT_DIR" ]; then
               echo "ERROR: package.json not found"
               exit 1
             fi
 
-            echo "Project found: $PROJECT_DIR"
             echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
           fi
 
       - name: Install Dependencies
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          npm install
+        run: npm install
 
       - name: Build Web App
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          npm run build
+        run: npm run build
 
       - name: Install Capacitor Android
         working-directory: ${{ env.PROJECT_DIR }}
@@ -69,36 +70,29 @@ jobs:
             npx cap add android
           fi
 
-      - name: Sync Capacitor Android
+      - name: Sync Capacitor
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          npx cap sync android
-
-      - name: Check Java Version
-        run: |
-          java -version
-          echo "JAVA_HOME=$JAVA_HOME"
+        run: npx cap sync android
 
       - name: Make Gradle Executable
         working-directory: ${{ env.PROJECT_DIR }}/android
-        run: |
-          chmod +x gradlew
+        run: chmod +x gradlew
+
+      - name: Stop Gradle
+        working-directory: ${{ env.PROJECT_DIR }}/android
+        run: ./gradlew --stop || true
 
       - name: Build Debug APK
         working-directory: ${{ env.PROJECT_DIR }}/android
-        run: |
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew clean assembleDebug --no-daemon
 
       - name: Find APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          echo "APK files:"
-          find android -type f -name "*.apk" -print
+        run: find android -type f -name "*.apk" -print
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Myraa-APK
-          path: |
-            ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
