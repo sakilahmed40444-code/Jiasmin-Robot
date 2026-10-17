@@ -23,9 +23,7 @@ jobs:
         with:
           node-version: 20
 
-      # Capacitor 7.4.x compiles with sourceCompatibility = Java 21
-      # (verified in @capacitor/android's capacitor/build.gradle),
-      # so JDK 21 is REQUIRED to build.
+      # Capacitor 7.4.x needs JDK 21 (sourceCompatibility 21 in @capacitor/android)
       - name: Setup Java 21
         uses: actions/setup-java@v4
         with:
@@ -39,19 +37,40 @@ jobs:
           "$JAVA_HOME/bin/java" -version
           "$JAVA_HOME/bin/javac" -version
 
+      - name: Find Project
+        shell: bash
+        run: |
+          echo "Searching for package.json..."
+          if [ -f "package.json" ]; then
+            echo "Project found in root"
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          else
+            PROJECT_DIR=$(find . -name package.json -not -path "*/node_modules/*" -printf '%h\n' | head -n 1)
+            if [ -z "$PROJECT_DIR" ]; then
+              echo "ERROR: package.json not found"
+              exit 1
+            fi
+            echo "Project found: $PROJECT_DIR"
+            echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          fi
+
       - name: Install dependencies
+        working-directory: ${{ env.PROJECT_DIR }}
         run: npm install --no-audit --no-fund
 
       - name: Build web app
+        working-directory: ${{ env.PROJECT_DIR }}
         run: npm run build
 
       - name: Add Android platform (if missing)
+        working-directory: ${{ env.PROJECT_DIR }}
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
           fi
 
       - name: Pin Gradle to Java 21
+        working-directory: ${{ env.PROJECT_DIR }}
         shell: bash
         run: |
           # A committed android/gradle.properties can carry a stale
@@ -70,18 +89,20 @@ jobs:
           ./gradlew -version
 
       - name: Add microphone permission
+        working-directory: ${{ env.PROJECT_DIR }}
         run: bash scripts/patch-android-permission.sh
 
       - name: Sync Capacitor
+        working-directory: ${{ env.PROJECT_DIR }}
         run: npx cap sync android
 
       - name: Build debug APK
-        working-directory: android
+        working-directory: ${{ env.PROJECT_DIR }}/android
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Myraa-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.PROJECT_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
